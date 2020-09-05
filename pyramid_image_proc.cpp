@@ -7,30 +7,46 @@
 
 namespace {
 
-inline int GetLayerCount(const QSize& size)
+inline int GetLayerCount(QSize size)
 {
 	if (size.isEmpty())
 		return -1;
 
 	int layerCount = 0;
 
-	int w = size.width();
-	int h = size.height();
-	while (w > 1 && h > 1)
+	while (size.width() > 1 && size.height() > 1)
 	{
-		w /= 2;
-		h /= 2;
+		size /= 2;
 
-		if (w < 1)
-			w = 1;
+		if (size.width() < 1)
+			size.setWidth(1);
 
-		if (h < 1)
-			h = 1;
+		if (size.height() < 1)
+			size.setHeight(1);
 
 		layerCount++;
 	}
 
 	return layerCount;
+}
+
+inline QSize GetLayerSize(QSize size, int layer)
+{
+	if (GetLayerCount(size) < layer)
+		return QSize();
+
+	for (int i = 0; i < layer; i++)
+	{
+		size /= 2;
+
+		if (size.width() < 1)
+			size.setWidth(1);
+
+		if (size.height() < 1)
+			size.setHeight(1);
+	}
+
+	return size;
 }
 
 } // namespace
@@ -58,6 +74,7 @@ public:
 		: _parent(parent)
 	{
 		connect(this, &Impl::LoadTaskCompleted, this, &Impl::OnLoadTaskCompleted, Qt::QueuedConnection);
+		connect(this, &Impl::GenerateLayerTaskCompleted, this, &Impl::OnGenerateLayerTaskCompleted, Qt::QueuedConnection);
 	}
 
 public: // methods
@@ -74,6 +91,7 @@ public: // methods
 			if (_cachedImages.contains(path))
 			{
 				_currentInfo = &_cachedImages[path];
+				_currentPixmap = &_cachedImages[path].cachedLayers[0];
 				emit _parent->ProcessingCompleted();
 			}
 			else
@@ -81,18 +99,21 @@ public: // methods
 				_currentInfo = nullptr;
 				_currentPixmap = nullptr;
 
-				auto task = [this, path]()
+				using namespace std::placeholders;
+				auto emittedFunc = std::bind(&Impl::LoadTaskCompleted, this, _1, _2, _3);
+
+				auto task = [emittedFunc, path]()
 				{
 					QPixmap pixmap(path);
 
 					if (pixmap.isNull())
 					{
-						emit this->LoadTaskCompleted(QString(), QPixmap(), -1);
+						emit emittedFunc(QString(), QPixmap(), -1);
 					}
 					else
 					{
 						const int layerCount = GetLayerCount(pixmap.size());
-						emit this->LoadTaskCompleted(path, std::move(pixmap), layerCount);
+						emit emittedFunc(path, std::move(pixmap), layerCount);
 					}
 				};
 
@@ -103,7 +124,7 @@ public: // methods
 
 	void SetCurrentLayer(int layer)
 	{
-		if (_currentInfo == nullptr)
+		if (_currentInfo == nullptr || _currentInfo->layerCount < layer)
 			return;
 
 		if (_currentInfo->cachedLayers.contains(layer))
@@ -114,7 +135,27 @@ public: // methods
 		{
 			_currentPixmap = nullptr;
 
-			// todo: run async generate layer
+			using namespace std::placeholders;
+			auto emittedFunc = std::bind(&Impl::GenerateLayerTaskCompleted, this, _1, _2);
+
+			QPixmap* baseImage = &_currentInfo->cachedLayers[0];
+
+			auto task = [emittedFunc, layer, baseImage]()
+			{
+				QSize newSize = GetLayerSize(baseImage->size(), layer);
+				auto image = baseImage->scaled(newSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+
+				if (image.isNull())
+				{
+					emit emittedFunc(QPixmap(), -1);
+				}
+				else
+				{
+					emit emittedFunc(std::move(image), layer);
+				}
+			};
+
+			QThreadPool::globalInstance()->start(task);
 		}
 	}
 
@@ -129,15 +170,27 @@ public: // methods
 	}
 
 signals:
-	void LoadTaskCompleted(const QString& path, QPixmap pixmap, int layerCount);
+	void LoadTaskCompleted(const QString& path, QPixmap image, int layerCount);
+	void GenerateLayerTaskCompleted(QPixmap pixmap, int layer);
 
 private slots:
-	void OnLoadTaskCompleted(const QString& path, QPixmap pixmap, int layerCount)
+	void OnLoadTaskCompleted(const QString& path, QPixmap image, int layerCount)
 	{
-		if (!pixmap.isNull())
+		if (!image.isNull())
 		{
-			_cachedImages.insert(path, { layerCount, {{0, pixmap}} });
-			_currentPixmap = &pixmap;
+			_cachedImages.insert(path, { layerCount, {{0, image}} });
+			_currentPixmap = &image;
+		}
+
+		emit _parent->ProcessingCompleted();
+	}
+
+	void OnGenerateLayerTaskCompleted(QPixmap image, int layer)
+	{
+		if (!image.isNull())
+		{
+			_currentInfo->cachedLayers.insert(layer, std::move(image));
+			_currentPixmap = & _currentInfo->cachedLayers[layer];
 		}
 
 		emit _parent->ProcessingCompleted();
