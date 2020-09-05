@@ -11,6 +11,9 @@ add_executable(movavi_test_task
 
     main_window.h
     main_window.cpp
+
+    pyramid_image_proc.h
+    pyramid_image_proc.cpp
 )
 
 target_link_libraries(movavi_test_task Qt5::Widgets Qt5::Core Qt5::Gui)

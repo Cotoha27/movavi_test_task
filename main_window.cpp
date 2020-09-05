@@ -1,5 +1,7 @@
 #include "main_window.h"
 
+#include "pyramid_image_proc.h"
+
 #include <QFileDialog>
 #include <QLabel>
 #include <QLayout>
@@ -13,6 +15,7 @@ class MainWindow::Impl : public QMainWindow
 {
 private:
 	QLabel* _scene = nullptr;
+	PyramidImageProc _pyramidProcessor;
 
 public:
 	Impl()
@@ -21,6 +24,8 @@ public:
 
 		this->setMinimumHeight(600);
 		this->setMinimumWidth(800);
+
+		connect(&_pyramidProcessor, &PyramidImageProc::ProcessingCompleted, this, &Impl::OnPyramidProcessinCompleted);
 	}
 
 private:
@@ -74,12 +79,17 @@ private slots:
 		const QString path = QFileDialog::getOpenFileName(0, "Open Image", "", "*.jpg *.png");
 		if (path.isEmpty())
 		{
-			_scene->setPixmap(QPixmap());
+			_pyramidProcessor.SetCurrentImage(QString());
 		}
 		else
 		{
-			_scene->setPixmap(QPixmap(path));
+			_pyramidProcessor.SetCurrentImage(path);
 		}
+	}
+
+	void OnPyramidProcessinCompleted()
+	{
+		_scene->setPixmap(*_pyramidProcessor.GetCurrentPixmap());
 	}
 };
 
