@@ -2,6 +2,7 @@
 
 #include "pyramid_image_proc.h"
 
+#include <QAbstractListModel>
 #include <QComboBox>
 #include <QFileDialog>
 #include <QLabel>
@@ -10,7 +11,84 @@
 #include <QMenuBar>
 #include <QScrollArea>
 
+#include <QtMath>
+
 #include <memory>
+
+namespace {
+
+struct FileRecord
+{
+	QString path;
+	int diagonal = -1;
+};
+
+bool operator< (const FileRecord& lhs, const FileRecord& rhs)
+{
+	return lhs.diagonal < rhs.diagonal;
+};
+
+class ImageFileModel : public QAbstractListModel
+{
+private:
+	QList<FileRecord> _data;
+
+public:
+	int Add(const QString& path, const QSize& size)
+	{
+		FileRecord newRecord;
+		{
+			const qint64 w = size.width();
+			const qint64 h = size.height();
+
+			const int diagonal = qSqrt(w * w + h * h);
+
+			newRecord = std::move(FileRecord{ path, diagonal });
+		}
+
+		auto it = std::lower_bound(_data.begin(), _data.end(), newRecord);
+		if (it == _data.end() || path != (*it).path)
+		{
+			it = _data.insert(it, newRecord);
+		}
+
+		emit dataChanged(QModelIndex(), QModelIndex());
+
+		return std::distance(_data.begin(), it);
+	}
+
+	int IndexOf(const QString& path)
+	{
+		for (int i = 0; i < _data.size(); i++)
+		{
+			if (_data[i].path == path)
+				return i;
+		}
+
+		return -1;
+	}
+
+public:
+	virtual int rowCount(const QModelIndex& parent = QModelIndex()) const override
+	{
+		return _data.size();
+	}
+
+	virtual QVariant ImageFileModel::data(const QModelIndex& index, int role) const override
+	{
+		const FileRecord& data = _data.at(index.row());
+
+		QVariant value;
+		if (role == Qt::DisplayRole)
+		{
+			value = data.path;
+		}
+
+		return value;
+	}
+};
+
+} // mamespace
 
 class MainWindow::Impl : public QMainWindow
 {
@@ -22,6 +100,8 @@ private:
 	QLabel* _layerSizeLabel = nullptr;
 
 	bool _needAddFileToCombobox = false;
+
+	ImageFileModel _model;
 
 	PyramidImageProc _pyramidProcessor;
 
@@ -63,6 +143,7 @@ private:
 			fileLabel->setText("File:");
 
 			_fileCombobox = new QComboBox();
+			_fileCombobox->setModel(&_model);
 			_fileCombobox->setFixedWidth(500);
 			connect(_fileCombobox, &QComboBox::currentTextChanged, this, &Impl::OnFileComboboxCurrentTextChanged);
 
@@ -113,8 +194,10 @@ private:
 	}
 
 private:
-	void SetSizeLabel(const QPixmap& image)
+	void SetImage(const QPixmap& image)
 	{
+		_scene->setPixmap(image);
+
 		if (image.isNull())
 		{
 			_layerSizeLabel->setText("-");
@@ -163,23 +246,27 @@ private slots:
 		}
 		else
 		{
+			int selectedIndex;
 			if (_needAddFileToCombobox)
 			{
-				_fileCombobox->addItem(path);
+				selectedIndex = _model.Add(path, image.size());
 				_needAddFileToCombobox = false;
 			}
+			else
+			{
+				selectedIndex = _model.IndexOf(path);
+			}
 
-			_fileCombobox->setCurrentText(path);
+			_fileCombobox->setCurrentIndex(selectedIndex);
 
 			for (int i = 0; i < layersCount; i++)
 			{
 				_layerCombobox->addItem(QString::number(i));
 			}
 			_layerCombobox->setCurrentIndex(0);
-			SetSizeLabel(image);
 
 			_scene->setFixedSize(image.size());
-			_scene->setPixmap(image);
+			SetImage(image);
 		}
 
 		_layerCombobox->blockSignals(false);
@@ -190,8 +277,7 @@ private slots:
 
 	void OnPyramidLayerChanged(const QPixmap& image)
 	{
-		SetSizeLabel(image);
-		_scene->setPixmap(image);
+		SetImage(image);
 		this->setEnabled(true);
 	}
 };
