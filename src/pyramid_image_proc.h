@@ -15,16 +15,12 @@ public:
 	PyramidImageProc();
 	~PyramidImageProc();
 
-	void StartSetCurrentImage(const QString& path);
-	void StartSetCurrentLayer(int layer);
-
-	int GetCurrentLayerCount() const;
-
-	const QPixmap* GetCurrentPixmap() const;
+	void BeginLoadingImage(const QString& path);
+	void BeginChangeLayer(int newLayer);
 
 signals:
-	void ImageLoaded(const QString& path);
-	void LayerChanged();
+	void ImageLoaded(const QString& path, const QPixmap& image, int layersCount);
+	void LayerChanged(const QPixmap& image);
 
 private:
 	class Impl;

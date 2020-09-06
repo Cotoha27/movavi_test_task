@@ -59,7 +59,6 @@ private:
 		controlLayout->setAlignment(Qt::AlignLeft);
 		{
 			auto fileLabel = new QLabel();
-			fileLabel->setContentsMargins(10, 0, 0, 0);
 			fileLabel->setText("File:");
 
 			_fileCombobox = new QComboBox();
@@ -67,16 +66,22 @@ private:
 			connect(_fileCombobox, &QComboBox::currentTextChanged, this, &Impl::OnFileComboboxCurrentTextChanged);
 
 			auto layerLabel = new QLabel();
+			layerLabel->setContentsMargins(10, 0, 0, 0);
 			layerLabel->setText("Layer:");
 
 			_layerCombobox = new QComboBox();
 			_layerCombobox->setFixedWidth(40);
 			connect(_layerCombobox, qOverload<int>(&QComboBox::currentIndexChanged), this, &Impl::OnLayerComboboxCurrentIndexChanged);
 
+			auto sizeCaptionLabel = new QLabel();
+			sizeCaptionLabel->setContentsMargins(10, 0, 0, 0);
+			sizeCaptionLabel->setText("Size:");
+
 			controlLayout->addWidget(fileLabel, 0, Qt::AlignVCenter);
 			controlLayout->addWidget(_fileCombobox, 0, Qt::AlignVCenter);
 			controlLayout->addWidget(layerLabel, 0, Qt::AlignVCenter);
 			controlLayout->addWidget(_layerCombobox, 0, Qt::AlignVCenter);
+			controlLayout->addWidget(sizeCaptionLabel, 0, Qt::AlignVCenter);
 		}
 
 		// central widget
@@ -109,30 +114,30 @@ private slots:
 		{
 			_needAddFileToCombobox = true;
 			this->setEnabled(false);
-			_pyramidProcessor.StartSetCurrentImage(path);
+			_pyramidProcessor.BeginLoadingImage(path);
 		}
 	}
 
 	void OnFileComboboxCurrentTextChanged(const QString& text)
 	{
 		this->setEnabled(false);
-		_pyramidProcessor.StartSetCurrentImage(text);
+		_pyramidProcessor.BeginLoadingImage(text);
 	}
 
 	void OnLayerComboboxCurrentIndexChanged(int index)
 	{
-		_pyramidProcessor.StartSetCurrentLayer(index);
+		this->setEnabled(false);
+		_pyramidProcessor.BeginChangeLayer(index);
 	}
 
-	void OnPyramidImageLoaded(const QString& path)
+	void OnPyramidImageLoaded(const QString& path, const QPixmap& image, int layersCount)
 	{
 		_fileCombobox->blockSignals(true);
 		_layerCombobox->blockSignals(true);
 
 		_layerCombobox->clear();
 
-		const QPixmap* image = _pyramidProcessor.GetCurrentPixmap();
-		if (image == nullptr)
+		if (image.isNull())
 		{
 			_scene->setPixmap(QPixmap());
 		}
@@ -146,13 +151,13 @@ private slots:
 
 			_fileCombobox->setCurrentText(path);
 
-			for (int i = 0; i < _pyramidProcessor.GetCurrentLayerCount(); i++)
+			for (int i = 0; i < layersCount; i++)
 			{
 				_layerCombobox->addItem(QString::number(i));
 			}
 			_layerCombobox->setCurrentIndex(0);
 
-			_scene->setPixmap(*image);
+			_scene->setPixmap(image);
 		}
 
 		_layerCombobox->blockSignals(false);
@@ -161,17 +166,10 @@ private slots:
 		this->setEnabled(true);
 	}
 
-	void OnPyramidLayerChanged()
+	void OnPyramidLayerChanged(const QPixmap& image)
 	{
-		const QPixmap* image = _pyramidProcessor.GetCurrentPixmap();
-		if (image == nullptr)
-		{
-			_scene->setPixmap(QPixmap());
-		}
-		else
-		{
-			_scene->setPixmap(*image);
-		}
+		_scene->setPixmap(image);
+		this->setEnabled(true);
 	}
 };
 

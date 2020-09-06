@@ -12,7 +12,7 @@ inline int GetLayerCount(QSize size)
 	if (size.isEmpty())
 		return -1;
 
-	int layerCount = 0;
+	int layersCount = 0;
 
 	while (size.width() > 1 && size.height() > 1)
 	{
@@ -24,10 +24,10 @@ inline int GetLayerCount(QSize size)
 		if (size.height() < 1)
 			size.setHeight(1);
 
-		layerCount++;
+		layersCount++;
 	}
 
-	return layerCount;
+	return layersCount;
 }
 
 inline QSize GetLayerSize(QSize size, int layer)
@@ -57,7 +57,7 @@ class PyramidImageProc::Impl : public QObject
 private: // types
 	struct ImageInfo
 	{
-		int layerCount;
+		int layersCount;
 		QMap<int, QPixmap> cachedLayers;
 	};
 
@@ -67,7 +67,6 @@ private: // fields
 	QMap<QString, ImageInfo> _cachedImages;
 
 	ImageInfo* _currentInfo = nullptr;
-	QPixmap* _currentPixmap = nullptr;
 
 public:
 	Impl(PyramidImageProc* parent)
@@ -78,26 +77,23 @@ public:
 	}
 
 public: // methods
-	void StartSetCurrentImage(const QString& path)
+	void BeginLoadingImage(const QString& path)
 	{
 		if (path.isEmpty())
 		{
 			_currentInfo = nullptr;
-			_currentPixmap = nullptr;
-			emit _parent->ImageLoaded(QString());
+			emit _parent->ImageLoaded(QString(), QPixmap(), -1);
 		}
 		else
 		{
 			if (_cachedImages.contains(path))
 			{
 				_currentInfo = &_cachedImages[path];
-				_currentPixmap = &_cachedImages[path].cachedLayers[0];
-				emit _parent->ImageLoaded(path);
+				emit _parent->ImageLoaded(path, _cachedImages[path].cachedLayers[0], _currentInfo->layersCount);
 			}
 			else
 			{
 				_currentInfo = nullptr;
-				_currentPixmap = nullptr;
 
 				using namespace std::placeholders;
 				auto emittedFunc = std::bind(&Impl::LoadTaskCompleted, this, _1, _2, _3);
@@ -112,8 +108,8 @@ public: // methods
 					}
 					else
 					{
-						const int layerCount = GetLayerCount(pixmap.size());
-						emit emittedFunc(path, std::move(pixmap), layerCount);
+						const int layersCount = GetLayerCount(pixmap.size());
+						emit emittedFunc(path, std::move(pixmap), layersCount);
 					}
 				};
 
@@ -122,31 +118,28 @@ public: // methods
 		}
 	}
 
-	void StartSetCurrentLayer(int layer)
+	void BeginChangeLayer(int newLayer)
 	{
-		if (_currentInfo == nullptr || _currentInfo->layerCount < layer)
+		if (_currentInfo == nullptr || _currentInfo->layersCount < newLayer)
 		{
-			emit _parent->LayerChanged();
+			emit _parent->LayerChanged(QPixmap());
 			return;
 		}
 
-		if (_currentInfo->cachedLayers.contains(layer))
+		if (_currentInfo->cachedLayers.contains(newLayer))
 		{
-			_currentPixmap = &_currentInfo->cachedLayers[layer];
-			emit _parent->LayerChanged();
+			emit _parent->LayerChanged(_currentInfo->cachedLayers[newLayer]);
 		}
 		else
 		{
-			_currentPixmap = nullptr;
-
 			using namespace std::placeholders;
 			auto emittedFunc = std::bind(&Impl::GenerateLayerTaskCompleted, this, _1, _2);
 
 			QPixmap* baseImage = &_currentInfo->cachedLayers[0];
 
-			auto task = [emittedFunc, layer, baseImage]()
+			auto task = [emittedFunc, newLayer, baseImage]()
 			{
-				QSize newSize = GetLayerSize(baseImage->size(), layer);
+				QSize newSize = GetLayerSize(baseImage->size(), newLayer);
 				auto image = baseImage->scaled(newSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 
 				if (image.isNull())
@@ -155,7 +148,7 @@ public: // methods
 				}
 				else
 				{
-					emit emittedFunc(std::move(image), layer);
+					emit emittedFunc(std::move(image), newLayer);
 				}
 			};
 
@@ -163,41 +156,29 @@ public: // methods
 		}
 	}
 
-	int GetCurrentLayerCount() const
-	{
-		return _currentInfo != nullptr ? _currentInfo->layerCount : -1;
-	}
-
-	const QPixmap* GetCurrentPixmap() const
-	{
-		return _currentPixmap;
-	}
-
 signals:
-	void LoadTaskCompleted(const QString& path, QPixmap image, int layerCount);
+	void LoadTaskCompleted(const QString& path, QPixmap image, int layersCount);
 	void GenerateLayerTaskCompleted(QPixmap pixmap, int layer);
 
 private slots:
-	void OnLoadTaskCompleted(const QString& path, QPixmap image, int layerCount)
+	void OnLoadTaskCompleted(const QString& path, QPixmap image, int layersCount)
 	{
 		if (!image.isNull())
 		{
-			_currentInfo = &_cachedImages.insert(path, { layerCount, {{0, image}} }).value();
-			_currentPixmap = &image;
+			_currentInfo = &_cachedImages.insert(path, { layersCount, {{0, image}} }).value();
 		}
 
-		emit _parent->ImageLoaded(path);
+		emit _parent->ImageLoaded(path, image, layersCount);
 	}
 
 	void OnGenerateLayerTaskCompleted(QPixmap image, int layer)
 	{
 		if (!image.isNull())
 		{
-			_currentInfo->cachedLayers.insert(layer, std::move(image));
-			_currentPixmap = & _currentInfo->cachedLayers[layer];
+			_currentInfo->cachedLayers.insert(layer, image);
 		}
 
-		emit _parent->LayerChanged();
+		emit _parent->LayerChanged(image);
 	}
 };
 
@@ -210,24 +191,14 @@ PyramidImageProc::~PyramidImageProc()
 	delete _impl;
 }
 
-void PyramidImageProc::StartSetCurrentImage(const QString& path)
+void PyramidImageProc::BeginLoadingImage(const QString& path)
 {
-	_impl->StartSetCurrentImage(path);
+	_impl->BeginLoadingImage(path);
 }
 
-void PyramidImageProc::StartSetCurrentLayer(int layer)
+void PyramidImageProc::BeginChangeLayer(int newLayer)
 {
-	_impl->StartSetCurrentLayer(layer);
-}
-
-int PyramidImageProc::GetCurrentLayerCount() const
-{
-	return _impl->GetCurrentLayerCount();
-}
-
-const QPixmap* PyramidImageProc::GetCurrentPixmap() const
-{
-	return _impl->GetCurrentPixmap();
+	_impl->BeginChangeLayer(newLayer);
 }
 
 #include "pyramid_image_proc.moc" // WTF? for avoid build error "No Q_OBJECT in the class with the signal"
