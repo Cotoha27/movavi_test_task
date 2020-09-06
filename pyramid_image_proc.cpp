@@ -78,13 +78,13 @@ public:
 	}
 
 public: // methods
-	void SetCurrentImage(const QString& path)
+	void StartSetCurrentImage(const QString& path)
 	{
 		if (path.isEmpty())
 		{
 			_currentInfo = nullptr;
 			_currentPixmap = nullptr;
-			emit _parent->ProcessingCompleted();
+			emit _parent->ImageLoaded(QString());
 		}
 		else
 		{
@@ -92,7 +92,7 @@ public: // methods
 			{
 				_currentInfo = &_cachedImages[path];
 				_currentPixmap = &_cachedImages[path].cachedLayers[0];
-				emit _parent->ProcessingCompleted();
+				emit _parent->ImageLoaded(path);
 			}
 			else
 			{
@@ -122,14 +122,18 @@ public: // methods
 		}
 	}
 
-	void SetCurrentLayer(int layer)
+	void StartSetCurrentLayer(int layer)
 	{
 		if (_currentInfo == nullptr || _currentInfo->layerCount < layer)
+		{
+			emit _parent->LayerChanged();
 			return;
+		}
 
 		if (_currentInfo->cachedLayers.contains(layer))
 		{
 			_currentPixmap = &_currentInfo->cachedLayers[layer];
+			emit _parent->LayerChanged();
 		}
 		else
 		{
@@ -178,11 +182,11 @@ private slots:
 	{
 		if (!image.isNull())
 		{
-			_cachedImages.insert(path, { layerCount, {{0, image}} });
+			_currentInfo = &_cachedImages.insert(path, { layerCount, {{0, image}} }).value();
 			_currentPixmap = &image;
 		}
 
-		emit _parent->ProcessingCompleted();
+		emit _parent->ImageLoaded(path);
 	}
 
 	void OnGenerateLayerTaskCompleted(QPixmap image, int layer)
@@ -193,7 +197,7 @@ private slots:
 			_currentPixmap = & _currentInfo->cachedLayers[layer];
 		}
 
-		emit _parent->ProcessingCompleted();
+		emit _parent->LayerChanged();
 	}
 };
 
@@ -206,14 +210,14 @@ PyramidImageProc::~PyramidImageProc()
 	delete _impl;
 }
 
-void PyramidImageProc::SetCurrentImage(const QString& path)
+void PyramidImageProc::StartSetCurrentImage(const QString& path)
 {
-	_impl->SetCurrentImage(path);
+	_impl->StartSetCurrentImage(path);
 }
 
-void PyramidImageProc::SetCurrentLayer(int layer)
+void PyramidImageProc::StartSetCurrentLayer(int layer)
 {
-	_impl->SetCurrentLayer(layer);
+	_impl->StartSetCurrentLayer(layer);
 }
 
 int PyramidImageProc::GetCurrentLayerCount() const

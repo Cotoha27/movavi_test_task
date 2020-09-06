@@ -2,6 +2,7 @@
 
 #include "pyramid_image_proc.h"
 
+#include <QComboBox>
 #include <QFileDialog>
 #include <QLabel>
 #include <QLayout>
@@ -15,6 +16,12 @@ class MainWindow::Impl : public QMainWindow
 {
 private:
 	QLabel* _scene = nullptr;
+
+	QComboBox* _fileCombobox = nullptr;
+	bool _needAddFileToCombobox = false;
+
+	QComboBox* _layerCombobox = nullptr;
+
 	PyramidImageProc _pyramidProcessor;
 
 public:
@@ -25,7 +32,8 @@ public:
 		this->setMinimumHeight(600);
 		this->setMinimumWidth(800);
 
-		connect(&_pyramidProcessor, &PyramidImageProc::ProcessingCompleted, this, &Impl::OnPyramidProcessinCompleted);
+		connect(&_pyramidProcessor, &PyramidImageProc::ImageLoaded, this, &Impl::OnPyramidImageLoaded);
+		connect(&_pyramidProcessor, &PyramidImageProc::LayerChanged, this, &Impl::OnPyramidLayerChanged);
 	}
 
 private:
@@ -44,14 +52,34 @@ private:
 		auto menuBar = new QMenuBar();
 		menuBar->addMenu(fileMenu);
 
+		// control widget
+
+		auto controlLayout = new QHBoxLayout();
+		controlLayout->setContentsMargins(10, 5, 0, 0);
+		controlLayout->setAlignment(Qt::AlignLeft);
+		{
+			auto fileLabel = new QLabel();
+			fileLabel->setContentsMargins(10, 0, 0, 0);
+			fileLabel->setText("File:");
+
+			_fileCombobox = new QComboBox();
+			_fileCombobox->setFixedWidth(500);
+			connect(_fileCombobox, &QComboBox::currentTextChanged, this, &Impl::OnFileComboboxCurrentTextChanged);
+
+			auto layerLabel = new QLabel();
+			layerLabel->setText("Layer:");
+
+			_layerCombobox = new QComboBox();
+			_layerCombobox->setFixedWidth(40);
+			connect(_layerCombobox, qOverload<int>(&QComboBox::currentIndexChanged), this, &Impl::OnLayerComboboxCurrentIndexChanged);
+
+			controlLayout->addWidget(fileLabel, 0, Qt::AlignVCenter);
+			controlLayout->addWidget(_fileCombobox, 0, Qt::AlignVCenter);
+			controlLayout->addWidget(layerLabel, 0, Qt::AlignVCenter);
+			controlLayout->addWidget(_layerCombobox, 0, Qt::AlignVCenter);
+		}
+
 		// central widget
-
-		//auto controlWidget = new QWidget();
-		//controlWidget->setFixedHeight(25);
-		//controlWidget->setStyleSheet("background-color:blue;");
-
-		//auto controlLayout = new QHBoxLayout();
-		//controlLayout->addWidget(controlWidget);
 
 		_scene = new QLabel();
 		_scene->setAlignment(Qt::AlignLeft | Qt::AlignTop);
@@ -63,7 +91,7 @@ private:
 
 		auto mainLayout = new QVBoxLayout();
 		mainLayout->setContentsMargins({ 0, 0, 0, 0 });
-		//mainLayout->addLayout(controlLayout);
+		mainLayout->addLayout(controlLayout);
 		mainLayout->addWidget(imageArea);
 
 		auto mainWidget = new QWidget();
@@ -77,19 +105,73 @@ private slots:
 	void OnFileMenuOpen()
 	{
 		const QString path = QFileDialog::getOpenFileName(0, "Open Image", "", "*.jpg *.png");
-		if (path.isEmpty())
+		if (!path.isEmpty())
 		{
-			_pyramidProcessor.SetCurrentImage(QString());
-		}
-		else
-		{
-			_pyramidProcessor.SetCurrentImage(path);
+			_needAddFileToCombobox = true;
+			this->setEnabled(false);
+			_pyramidProcessor.StartSetCurrentImage(path);
 		}
 	}
 
-	void OnPyramidProcessinCompleted()
+	void OnFileComboboxCurrentTextChanged(const QString& text)
 	{
-		_scene->setPixmap(*_pyramidProcessor.GetCurrentPixmap());
+		this->setEnabled(false);
+		_pyramidProcessor.StartSetCurrentImage(text);
+	}
+
+	void OnLayerComboboxCurrentIndexChanged(int index)
+	{
+		_pyramidProcessor.StartSetCurrentLayer(index);
+	}
+
+	void OnPyramidImageLoaded(const QString& path)
+	{
+		_fileCombobox->blockSignals(true);
+		_layerCombobox->blockSignals(true);
+
+		_layerCombobox->clear();
+
+		const QPixmap* image = _pyramidProcessor.GetCurrentPixmap();
+		if (image == nullptr)
+		{
+			_scene->setPixmap(QPixmap());
+		}
+		else
+		{
+			if (_needAddFileToCombobox)
+			{
+				_fileCombobox->addItem(path);
+				_needAddFileToCombobox = false;
+			}
+
+			_fileCombobox->setCurrentText(path);
+
+			for (int i = 0; i < _pyramidProcessor.GetCurrentLayerCount(); i++)
+			{
+				_layerCombobox->addItem(QString::number(i));
+			}
+			_layerCombobox->setCurrentIndex(0);
+
+			_scene->setPixmap(*image);
+		}
+
+		_layerCombobox->blockSignals(false);
+		_fileCombobox->blockSignals(false);
+
+		this->setEnabled(true);
+	}
+
+	void OnPyramidLayerChanged()
+	{
+		const QPixmap* image = _pyramidProcessor.GetCurrentPixmap();
+		if (image == nullptr)
+		{
+			_scene->setPixmap(QPixmap());
+		}
+		else
+		{
+			_scene->setPixmap(*image);
+		}
 	}
 };
 
