@@ -7,13 +7,13 @@ set(CMAKE_AUTOMOC ON)
 find_package(Qt5 COMPONENTS Widgets REQUIRED)
 
 add_executable(movavi_test_task
-    main.cpp
+    src/main.cpp
 
-    main_window.h
-    main_window.cpp
+    src/main_window.h
+    src/main_window.cpp
 
-    pyramid_image_proc.h
-    pyramid_image_proc.cpp
+    src/pyramid_image_proc.h
+    src/pyramid_image_proc.cpp
 )
 
 target_link_libraries(movavi_test_task Qt5::Widgets Qt5::Core Qt5::Gui)
