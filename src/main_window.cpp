@@ -18,9 +18,10 @@ private:
 	QLabel* _scene = nullptr;
 
 	QComboBox* _fileCombobox = nullptr;
-	bool _needAddFileToCombobox = false;
-
 	QComboBox* _layerCombobox = nullptr;
+	QLabel* _layerSizeLabel = nullptr;
+
+	bool _needAddFileToCombobox = false;
 
 	PyramidImageProc _pyramidProcessor;
 
@@ -77,11 +78,15 @@ private:
 			sizeCaptionLabel->setContentsMargins(10, 0, 0, 0);
 			sizeCaptionLabel->setText("Size:");
 
+			_layerSizeLabel = new QLabel();
+			_layerSizeLabel->setText("-");
+
 			controlLayout->addWidget(fileLabel, 0, Qt::AlignVCenter);
 			controlLayout->addWidget(_fileCombobox, 0, Qt::AlignVCenter);
 			controlLayout->addWidget(layerLabel, 0, Qt::AlignVCenter);
 			controlLayout->addWidget(_layerCombobox, 0, Qt::AlignVCenter);
 			controlLayout->addWidget(sizeCaptionLabel, 0, Qt::AlignVCenter);
+			controlLayout->addWidget(_layerSizeLabel, 0, Qt::AlignVCenter);
 		}
 
 		// central widget
@@ -104,6 +109,20 @@ private:
 
 		this->setMenuBar(menuBar);
 		this->setCentralWidget(mainWidget);
+	}
+
+private:
+	void SetSizeLabel(const QPixmap& image)
+	{
+		if (image.isNull())
+		{
+			_layerSizeLabel->setText("-");
+		}
+		else
+		{
+			const QSize size = image.size();
+			_layerSizeLabel->setText(QString("%1x%2").arg(QString::number(size.width())).arg(QString::number(size.height())));
+		}
 	}
 
 private slots:
@@ -156,6 +175,7 @@ private slots:
 				_layerCombobox->addItem(QString::number(i));
 			}
 			_layerCombobox->setCurrentIndex(0);
+			SetSizeLabel(image);
 
 			_scene->setPixmap(image);
 		}
@@ -168,6 +188,7 @@ private slots:
 
 	void OnPyramidLayerChanged(const QPixmap& image)
 	{
+		SetSizeLabel(image);
 		_scene->setPixmap(image);
 		this->setEnabled(true);
 	}
