@@ -53,11 +53,11 @@ inline QSize GetLayerSize(QSize size, int layer)
 
 class PyramidImageProc::Impl : public QObject
 {
-	Q_OBJECT
+	Q_OBJECT // it shouldn't be here
 private: // types
 	struct ImageInfo
 	{
-		int layersCount;
+		int layersCount = 0;
 		QMap<int, QPixmap> cachedLayers;
 	};
 
