@@ -93,6 +93,7 @@ private:
 
 		_scene = new QLabel();
 		_scene->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+		_scene->setScaledContents(true);
 
 		auto imageArea = new QScrollArea();
 		imageArea->setWidget(_scene);
@@ -177,6 +178,7 @@ private slots:
 			_layerCombobox->setCurrentIndex(0);
 			SetSizeLabel(image);
 
+			_scene->setFixedSize(image.size());
 			_scene->setPixmap(image);
 		}
 
